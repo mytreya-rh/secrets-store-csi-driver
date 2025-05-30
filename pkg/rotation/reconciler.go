@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -398,7 +399,15 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 		r.generateEvent(pod, corev1.EventTypeWarning, mountRotationFailedReason, fmt.Sprintf("failed to lookup provider client: %q", providerName))
 		return fmt.Errorf("failed to lookup provider client: %q", providerName)
 	}
-	newObjectVersions, errorReason, err := secretsstore.MountContent(ctx, providerClient, string(paramsJSON), string(secretsJSON), spcps.Status.TargetPath, string(permissionJSON), oldObjectVersions)
+	gid := int64(-1)
+	if spcps.Status.FSGroup != "" {
+		gid, err = strconv.ParseInt(spcps.Status.FSGroup, 10, 64)
+		if err != nil {
+			return fmt.Errorf("failed to rotate objects for pod %s/%s, err: %w, invalid FSGroup:%s", spcps.Namespace, spcps.Status.PodName, err, spcps.Status.FSGroup)
+		}
+	}
+	klog.V(5).Info("Reconciling pod %s/%s with fsGroup: %v\n", spcps.Namespace, spcps.Status.PodName, gid)
+	newObjectVersions, errorReason, err := secretsstore.MountContent(ctx, providerClient, string(paramsJSON), string(secretsJSON), spcps.Status.TargetPath, string(permissionJSON), oldObjectVersions, gid)
 	if err != nil {
 		r.generateEvent(pod, corev1.EventTypeWarning, mountRotationFailedReason, fmt.Sprintf("provider mount err: %+v", err))
 		return fmt.Errorf("failed to rotate objects for pod %s/%s, err: %w", spcps.Namespace, spcps.Status.PodName, err)

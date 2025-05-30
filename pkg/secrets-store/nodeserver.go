@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	internalerrors "sigs.k8s.io/secrets-store-csi-driver/pkg/errors"
@@ -236,8 +237,24 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		}
 	}
 	mounted = true
+
+	klog.V(3).InfoS("volume mounted with", "volumeContext", req.VolumeContext, "volumeCapabilities", req.VolumeCapability.String())
+	gid := int64(-1) // Group ID to Chown the volume contents to
+	if req.VolumeCapability != nil && req.VolumeCapability.GetMount() != nil && req.VolumeCapability.GetMount().GetVolumeMountGroup() != "" {
+		fsGroupStr := req.VolumeCapability.GetMount().GetVolumeMountGroup()
+		klog.V(5).Info("fsGroupStr: %v\n", fsGroupStr)
+		gid, err = strconv.ParseInt(fsGroupStr, 10, 64)
+		klog.V(5).Info("converted gid: %v\n", gid)
+		if err != nil {
+			klog.ErrorS(err, "failed to mount secrets store object content", "pod", klog.ObjectRef{Namespace: podNamespace, Name: podName}, "invalid FSGroup: ", fsGroupStr)
+			return nil, err
+		}
+	} else {
+		klog.V(5).Info("mount group not set")
+	}
+
 	var objectVersions map[string]string
-	if objectVersions, errorReason, err = ns.mountSecretsStoreObjectContent(ctx, providerName, string(parametersStr), string(secretStr), targetPath, string(permissionStr), podName); err != nil {
+	if objectVersions, errorReason, err = ns.mountSecretsStoreObjectContent(ctx, providerName, string(parametersStr), string(secretStr), targetPath, string(permissionStr), podName, gid); err != nil {
 		klog.ErrorS(err, "failed to mount secrets store object content", "pod", klog.ObjectRef{Namespace: podNamespace, Name: podName})
 		return nil, fmt.Errorf("failed to mount secrets store objects for pod %s/%s, err: %w", podNamespace, podName, err)
 	}
@@ -246,7 +263,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	// SPCPS is created the first time after the pod mount is complete. Update is required in scenarios where
 	// the pod with same name (pods created by statefulsets) is moved to a different node and the old SPCPS
 	// has not yet been garbage collected.
-	if err = createOrUpdateSecretProviderClassPodStatus(ctx, ns.client, ns.reader, podName, podNamespace, podUID, secretProviderClass, targetPath, ns.nodeID, true, objectVersions); err != nil {
+	if err = createOrUpdateSecretProviderClassPodStatus(ctx, ns.client, ns.reader, podName, podNamespace, podUID, secretProviderClass, targetPath, ns.nodeID, true, objectVersions, gid); err != nil {
 		return nil, fmt.Errorf("failed to create secret provider class pod status for pod %s/%s, err: %w", podNamespace, podName, err)
 	}
 
@@ -334,7 +351,7 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
-func (ns *nodeServer) mountSecretsStoreObjectContent(ctx context.Context, providerName, attributes, secrets, targetPath, permission, podName string) (map[string]string, string, error) {
+func (ns *nodeServer) mountSecretsStoreObjectContent(ctx context.Context, providerName, attributes, secrets, targetPath, permission, podName string, gid int64) (map[string]string, string, error) {
 	if len(attributes) == 0 {
 		return nil, "", errors.New("missing attributes")
 	}
@@ -352,7 +369,7 @@ func (ns *nodeServer) mountSecretsStoreObjectContent(ctx context.Context, provid
 
 	klog.InfoS("Using gRPC client", "provider", providerName, "pod", podName)
 
-	return MountContent(ctx, client, attributes, secrets, targetPath, permission, nil)
+	return MountContent(ctx, client, attributes, secrets, targetPath, permission, nil, gid)
 }
 
 func (ns *nodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
@@ -373,6 +390,13 @@ func (ns *nodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetC
 			Type: &csi.NodeServiceCapability_Rpc{
 				Rpc: &csi.NodeServiceCapability_RPC{
 					Type: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
+				},
+			},
+		},
+		{
+			Type: &csi.NodeServiceCapability_Rpc{
+				Rpc: &csi.NodeServiceCapability_RPC{
+					Type: csi.NodeServiceCapability_RPC_VOLUME_MOUNT_GROUP,
 				},
 			},
 		},
