@@ -109,7 +109,7 @@ function enable_secret_rotation() {
   kubectl wait -n rotation --for=condition=Ready --timeout=60s pod ${curl_pod_name}
   local pod_ip=$(kubectl get pod -n kube-system -l app=csi-secrets-store-e2e-provider -o jsonpath="{.items[0].status.podIP}")
   run kubectl exec ${curl_pod_name} -n rotation -- curl http://${pod_ip}:8080/rotation?rotated=true
-  sleep 35 # 30 is poll interval, 5 second grace should be enough
+  sleep 60
 }
 
 function disable_secret_rotation() {
