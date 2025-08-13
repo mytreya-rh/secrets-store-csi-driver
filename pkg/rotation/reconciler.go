@@ -405,9 +405,9 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 		gid, err = strconv.ParseInt(spcps.Status.FSGroup, 10, 64)
 		if err != nil {
 			errorReason = internalerrors.FailedToParseFSGroup
-			errStr := fmt.Sprintf("failed to rotate objects for pod %s/%s, invalid FSGroup:%s, err: %w ", spcps.Namespace, spcps.Status.PodName, spcps.Status.FSGroup, err)
-			r.generateEvent(pod, corev1.EventTypeWarning, mountRotationFailedReason, errStr)
-			return fmt.Errorf("%s", errStr)
+			errStr := fmt.Sprintf("failed to rotate objects for pod %s/%s, invalid FSGroup:%s", spcps.Namespace, spcps.Status.PodName, spcps.Status.FSGroup)
+			r.generateEvent(pod, corev1.EventTypeWarning, mountRotationFailedReason, fmt.Sprintf("%s, err: %v", errStr, err))
+			return fmt.Errorf("%s, err: %w", errStr, err)
 		}
 	}
 	klog.V(5).InfoS("updating the secret content", "pod", klog.ObjectRef{Namespace: spcps.Namespace, Name: spcps.Status.PodName}, "FSGroup", gid)
