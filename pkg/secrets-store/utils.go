@@ -102,11 +102,10 @@ func createOrUpdateSecretProviderClassPodStatus(ctx context.Context, c client.Cl
 	}
 	o = spcpsutil.OrderSecretProviderClassObjectByID(o)
 	fsGroup := ""
-	klog.V(5).Infof("gid: %v for pod: %v/%v", gid, namespace, podname)
 	if gid != constants.NoGID {
 		fsGroup = strconv.FormatInt(gid, 10)
 	}
-	klog.V(5).Infof("gid string: %v for pod: %v/%v", fsGroup, namespace, podname)
+	klog.V(5).InfoS("setting gid in spcps", "pod", klog.ObjectRef{Namespace: namespace, Name: podname}, "gid", gid, "gidStr", fsGroup)
 	spcPodStatus := &secretsstorev1.SecretProviderClassPodStatus{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      spcpsName,
@@ -133,7 +132,6 @@ func createOrUpdateSecretProviderClassPodStatus(ctx context.Context, c client.Cl
 			UID:        types.UID(podUID),
 		},
 	})
-	klog.V(5).InfoS("creating", "spcPodStatus", spcPodStatus)
 	if err = c.Create(ctx, spcPodStatus); err == nil || !apierrors.IsAlreadyExists(err) {
 		return err
 	}

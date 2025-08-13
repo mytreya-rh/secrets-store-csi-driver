@@ -142,21 +142,21 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
-	klog.V(2).InfoS("node publish volume", "target", targetPath, "volumeId", volumeID, "mount flags", mountFlags)
+	klog.V(2).InfoS("node publish volume", "target", targetPath, "volumeId", volumeID, "mount flags", mountFlags, "volumeCapabilities", req.VolumeCapability.String())
 
-	klog.V(5).InfoS("volume mounted with", "volumeContext", req.VolumeContext, "volumeCapabilities", req.VolumeCapability.String())
 	gid := constants.NoGID // Group ID to Chown the volume contents to
-	if req.VolumeCapability != nil && req.VolumeCapability.GetMount() != nil && req.VolumeCapability.GetMount().GetVolumeMountGroup() != "" {
-		fsGroupStr := req.VolumeCapability.GetMount().GetVolumeMountGroup()
+	mountVol := req.VolumeCapability.GetMount()
+	if len(mountVol.GetVolumeMountGroup()) > 0 {
+		fsGroupStr := mountVol.GetVolumeMountGroup()
 		klog.V(5).Info("fsGroupStr: %v\n", fsGroupStr)
 		gid, err = strconv.ParseInt(fsGroupStr, 10, 64)
 		klog.V(5).Info("converted gid: %v\n", gid)
 		if err != nil {
-			klog.ErrorS(err, "failed to mount secrets store object content", "pod", klog.ObjectRef{Namespace: podNamespace, Name: podName}, "invalid FSGroup: ", fsGroupStr)
+			klog.ErrorS(err, "failed to mount secrets store object content", "pod", klog.ObjectRef{Namespace: podNamespace, Name: podName}, "FSGroup: ", fsGroupStr)
 			return nil, status.Error(codes.InvalidArgument, "Error parsing FSGroup")
 		}
 	} else {
-		klog.V(5).Info("mount group not set")
+		klog.V(5).InfoS("mount group not set", "targetPath", targetPath, "pod", klog.ObjectRef{Namespace: podNamespace, Name: podName})
 	}
 
 	if isMockProvider(providerName) {

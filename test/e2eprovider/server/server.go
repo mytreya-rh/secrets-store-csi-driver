@@ -167,7 +167,7 @@ func (s *Server) Mount(ctx context.Context, req *v1alpha1.MountRequest) (*v1alph
 		}
 
 		klog.InfoS("Secret Object with", "name", mockSecretsStoreObject.ObjectName, "permission", mockSecretsStoreObject.FilePermission)
-		if mockSecretsStoreObject.FilePermission != "" {
+		if len(mockSecretsStoreObject.FilePermission) > 0 {
 			mode, err := strconv.ParseUint(mockSecretsStoreObject.FilePermission, 8, 32)
 			if err != nil || mode > 511 {
 				return nil, fmt.Errorf("invalid filePermission: %s, error: %w for file: %s", mockSecretsStoreObject.FilePermission, err, mockSecretsStoreObject.ObjectName)
